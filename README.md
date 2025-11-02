@@ -1,6 +1,6 @@
-# GRETL Copilot Skeleton
+# GRETL Copilot Agent
 
-Dieses Projekt liefert ein minimales, aber lauffähiges Spring-Boot-Skeleton für einen GRETL Copilot auf Basis von [LangChain4j](https://github.com/langchain4j/langchain4j). Der Fokus liegt auf der Orchestrierung unterschiedlicher Sub-Agents ("Task finden", "Task erklären", "Task generieren") durch einen zentralen Orchestrator-Agenten, der die Benutzeranfrage per LLM klassifiziert und die passende Fähigkeit aufruft.
+Dieses Projekt stellt einen funktionsreichen Spring-Boot-Agenten für GRETL auf Basis von [LangChain4j](https://github.com/langchain4j/langchain4j) bereit. Der Fokus liegt auf der Orchestrierung unterschiedlicher Sub-Agents ("Task finden", "Task erklären", "Task generieren") durch einen zentralen Orchestrator-Agenten, der die Benutzeranfrage per LLM klassifiziert und die passende Fähigkeit aufruft.
 
 ## Architekturüberblick
 
@@ -121,7 +121,7 @@ Tests lassen sich mit dem Gradle Wrapper ausführen:
 ## Konfiguration
 
 1. Java 21 installieren (bereits im Gradle Toolchain konfiguriert).
-2. Optional: OpenAI API-Key setzen, z. B. via `application.properties`:
+2. Optional: OpenAI API-Key setzen, z. B. via `application.properties` oder als Umgebungsvariable `OPENAI_API_KEY`:
    ```properties
    openai.api-key=sk-...
    openai.model=gpt-4o-mini
@@ -141,7 +141,7 @@ Tests lassen sich mit dem Gradle Wrapper ausführen:
 5. Web-Oberfläche:
    * Browser öffnen und `http://localhost:8080/ui/chat` aufrufen.
    * Das Formular verwendet [HTMX 2.0.8](https://htmx.org) und Server-Sent-Events, um Antworten ohne JavaScript-Framework live einzublenden.
-   * Ohne OpenAI-Key greifen die Mock-Modelle und liefern Dummy-Antworten, sodass die UI auch offline nutzbar bleibt.
+   * Ohne OpenAI-Key greifen die Mock-Modelle und liefern Dummy-Antworten, sodass die UI auch offline nutzbar bleibt. Fehlt der Umgebungswert, bleibt die Property leer und es ist keine zusätzliche Konfiguration nötig.
 
 ## Weiteres Vorgehen
 
