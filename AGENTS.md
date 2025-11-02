@@ -1,0 +1,14 @@
+# Repository Guidelines
+
+Welcome to the GRETL Copilot Agent project. Follow these rules whenever you work within this repository:
+
+## Required Workflow
+- **Run the full test suite** with `./gradlew test` before committing.
+- **Add or update automated tests** whenever you change behavior or introduce new features.
+- **Keep the documentation accurate.** If a change affects architecture, behavior, or public APIs, update `README.md` accordingly. Ensure the Mermaid diagram and the class descriptions stay in sync with the implementation.
+
+## Coding Notes
+- Favor clear, maintainable code and keep imports free of `try/catch` wrappers.
+- Align with existing formatting and idioms used in the codebase.
+
+Thank you for contributing!
