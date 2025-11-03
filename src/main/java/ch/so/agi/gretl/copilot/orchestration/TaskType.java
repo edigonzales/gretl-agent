@@ -3,7 +3,8 @@ package ch.so.agi.gretl.copilot.orchestration;
 public enum TaskType {
     FIND_TASK,
     EXPLAIN_TASK,
-    GENERATE_TASK;
+    GENERATE_TASK,
+    OTHER;
 
     public static TaskType fromModelResponse(String response) {
         if (response == null) {
