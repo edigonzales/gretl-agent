@@ -11,4 +11,9 @@ Welcome to the GRETL Copilot Agent project. Follow these rules whenever you work
 - Favor clear, maintainable code and keep imports free of `try/catch` wrappers.
 - Align with existing formatting and idioms used in the codebase.
 
+## Database
+- The vector database can be started with `docker compose up`. It runs on port 54323. The database name is `gretl_rag`. Username and password is `gretl`.
+- The DDL of the database scheme and tables is in `./initdb/01_init.sql`.
+- The embeddings will be imported on startup.
+
 Thank you for contributing!
