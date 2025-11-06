@@ -2,15 +2,23 @@ package ch.so.agi.gretl.copilot.orchestration;
 
 import ch.so.agi.gretl.copilot.orchestration.agent.TaskExplanationAgent;
 import ch.so.agi.gretl.copilot.orchestration.agent.TaskFinderAgent;
+import ch.so.agi.gretl.copilot.orchestration.agent.TaskFinderDocument;
+import ch.so.agi.gretl.copilot.orchestration.agent.TaskFinderRepository;
 import ch.so.agi.gretl.copilot.orchestration.agent.TaskGeneratorAgent;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.embedding.EmbeddingModel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class TaskOrchestratorTest {
 
@@ -20,7 +28,11 @@ class TaskOrchestratorTest {
     @BeforeEach
     void setUp() {
         model = new RecordingModel();
-        orchestrator = new TaskOrchestrator(model, new TaskFinderAgent(), new TaskExplanationAgent(), new TaskGeneratorAgent());
+        TaskFinderRepository repository = new StubFinderRepository();
+        ObjectProvider<EmbeddingModel> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(null);
+        TaskFinderAgent finderAgent = new TaskFinderAgent(repository, provider);
+        orchestrator = new TaskOrchestrator(model, finderAgent, new TaskExplanationAgent(), new TaskGeneratorAgent());
     }
 
     @Test
@@ -30,7 +42,7 @@ class TaskOrchestratorTest {
         TaskExecutionResult result = orchestrator.orchestrate("Please find me a task");
 
         assertThat(result.taskType()).isEqualTo(TaskType.FIND_TASK);
-        assertThat(result.answer()).contains("Searching");
+        assertThat(result.answer()).contains("task-demo");
     }
 
     @Test
@@ -75,6 +87,27 @@ class TaskOrchestratorTest {
             String response = this.nextResponse == null ? "FIND_TASK" : this.nextResponse;
             this.nextResponse = null;
             return response;
+        }
+    }
+
+    private static class StubFinderRepository implements TaskFinderRepository {
+
+        @Override
+        public List<TaskFinderDocument> searchLexical(String query, int limit) {
+            return List.of(new TaskFinderDocument(
+                    "task-demo",
+                    "Lexikalischer Treffer",
+                    "https://example.org/tasks/demo",
+                    "section",
+                    "Beispielinhalt für den Unittests",
+                    1.0d,
+                    0.0d
+            ));
+        }
+
+        @Override
+        public List<TaskFinderDocument> searchSemantic(double[] embedding, int limit) {
+            return List.of();
         }
     }
 }

@@ -14,6 +14,7 @@ sequenceDiagram
     participant Finder as TaskFinderAgent
     participant Explainer as TaskExplanationAgent
     participant Generator as TaskGeneratorAgent
+    participant RagStore as RAG-Datenbank
 
     User->>Controller: HTTP POST /api/chat { message }
     Controller->>Service: respond(request)
@@ -22,6 +23,8 @@ sequenceDiagram
     Classifier-->>Orchestrator: goal (FIND/EXPLAIN/GENERATE)
     alt Ziel == FIND_TASK
         Orchestrator->>Finder: handle(message)
+        Finder->>RagStore: Hybrid-Suche (BM25 + Vektor)
+        RagStore-->>Finder: Dokumentfragmente
         Finder-->>Orchestrator: Antwort Finder-Agent
     else Ziel == EXPLAIN_TASK
         Orchestrator->>Explainer: handle(message)
@@ -90,7 +93,7 @@ Enum für die Ziele `FIND_TASK`, `EXPLAIN_TASK`, `GENERATE_TASK`. Die Methode `f
 Funktionales Interface, das den Vertrag der Sub-Agenten definiert (`handle(String userMessage)` → Antworttext).
 
 #### `ch.so.agi.gretl.copilot.orchestration.agent.TaskFinderAgent`
-Mock für die Fähigkeit "Task finden". Auskommentierte Konstruktoren zeigen, wie später ein spezialisiertes `finderModel` injiziert werden kann.
+Führt eine hybride Suche in der RAG-Datenbank durch: BM25-/TSVektor-Abfragen liefern präzise Texttreffer, pgvector-Suche ergänzt semantisch ähnliche Chunks. Die Ergebnisse werden normalisiert, gewichtet (60 % BM25, 40 % Semantik) und als kompakte Trefferliste für die Benutzer:innen formatiert.
 
 #### `ch.so.agi.gretl.copilot.orchestration.agent.TaskExplanationAgent`
 Mock für die Fähigkeit "Task erklären" mit vorbereiteter Injektion des `explanationModel`.
@@ -103,6 +106,36 @@ Record, der den ausgewählten `TaskType` und die Agentenantwort bündelt. Dient 
 
 #### `ch.so.agi.gretl.copilot.orchestration.TaskOrchestrator`
 Steuert den Gesamtfluss: baut den Klassifikationsprompt, ruft das Klassifikations-LLM auf, interpretiert das Ergebnis und delegiert an den passenden Sub-Agenten.
+
+### Hybrid-Suche des TaskFinderAgent
+
+Der Finder-Agent nutzt die RAG-Datenbank (`rag.doc_chunks`) mit einer kombinierten Abfrage:
+
+```sql
+WITH query AS (
+    SELECT plainto_tsquery('simple', :query) AS tsq,
+           CAST(:embedding AS vector)       AS embedding
+)
+SELECT
+    dc.task_name,
+    ts_rank_cd(to_tsvector('simple', COALESCE(dc.heading, '') || ' ' || COALESCE(dc.content_text, '')), query.tsq) AS lexical_score,
+    1.0 / (1.0 + (dc.embedding <=> query.embedding))                                                               AS semantic_score
+FROM rag.doc_chunks dc
+CROSS JOIN query
+WHERE dc.content_text IS NOT NULL
+  AND query.tsq @@ to_tsvector('simple', COALESCE(dc.heading, '') || ' ' || COALESCE(dc.content_text, ''))
+ORDER BY lexical_score DESC, dc.embedding <=> query.embedding ASC
+LIMIT :limit;
+```
+
+* **BM25/TSVektor:** `ts_rank_cd` approximiert BM25 und liefert robuste Volltexttreffer.
+* **Semantik:** Die pgvector-Distanz `(embedding <=> query.embedding)` verwandeln wir in eine Ähnlichkeitskennzahl (`1 / (1 + distance)`), um semantische Nähe zu berücksichtigen.
+* **Fusion:** Die Ergebnisse werden in Java normalisiert (max-basierte Skalierung) und mit 60 % Gewicht für BM25 sowie 40 % für die semantische Komponente zusammengeführt.
+* **Fallback:** Ist kein Embedding-Modell konfiguriert, arbeitet der Agent automatisch rein lexical.
+
+**Intent-Classifier?** Nicht nötig: Der bestehende Orchestrator klassifiziert jede Nutzeranfrage bereits in `FIND_TASK`, `EXPLAIN_TASK` oder `GENERATE_TASK`. Ein zusätzlicher Intent-Classifier im Finder würde nur Duplikatlogik einführen.
+
+**Reranking?** Ebenfalls nicht erforderlich. Die Hybrid-Gewichtung übernimmt ein leichtgewichtiges Re-Ranking im Agenten selbst. Zusätzliche Re-Ranking-Modelle (z. B. Cross-Encoder) würden die Antwortzeit deutlich erhöhen, ohne den Nutzen bei der kompakten Top-5-Liste signifikant zu steigern.
 
 ## Tests
 
