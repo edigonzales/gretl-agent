@@ -1,11 +1,9 @@
 package ch.so.agi.gretl.copilot.orchestration.agent;
 
 import org.postgresql.util.PGobject;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
@@ -21,7 +19,7 @@ public class DatabaseTaskFinderRepository implements TaskFinderRepository {
                 SELECT plainto_tsquery('simple', :query) AS tsq
             )
             SELECT
-                dc.task_name,
+                dc.task_name AS taskName,
                 COALESCE(dc.heading, '') AS heading,
                 COALESCE(dc.url, '') AS url,
                 COALESCE(dc.anchor, '') AS anchor,
@@ -29,12 +27,13 @@ public class DatabaseTaskFinderRepository implements TaskFinderRepository {
                 ts_rank_cd(
                     to_tsvector('simple', COALESCE(dc.heading, '') || ' ' || COALESCE(dc.content_text, '')),
                     query.tsq
-                ) AS lexical_score
+                ) AS lexicalScore,
+                0.0::double precision AS semanticScore
             FROM rag.doc_chunks dc
             CROSS JOIN query
             WHERE dc.content_text IS NOT NULL
               AND query.tsq @@ to_tsvector('simple', COALESCE(dc.heading, '') || ' ' || COALESCE(dc.content_text, ''))
-            ORDER BY lexical_score DESC
+            ORDER BY lexicalScore DESC
             LIMIT :limit
             """;
 
@@ -43,22 +42,19 @@ public class DatabaseTaskFinderRepository implements TaskFinderRepository {
                 SELECT CAST(:embedding AS vector) AS embedding
             )
             SELECT
-                dc.task_name,
+                dc.task_name AS taskName,
                 COALESCE(dc.heading, '') AS heading,
                 COALESCE(dc.url, '') AS url,
                 COALESCE(dc.anchor, '') AS anchor,
                 COALESCE(dc.content_text, '') AS content,
-                0.0::double precision AS lexical_score,
-                1.0 / (1.0 + (dc.embedding <=> query.embedding)) AS semantic_score
+                0.0::double precision AS lexicalScore,
+                1.0 / (1.0 + (dc.embedding <=> query.embedding)) AS semanticScore
             FROM rag.doc_chunks dc
             CROSS JOIN query
             WHERE dc.embedding IS NOT NULL
             ORDER BY dc.embedding <=> query.embedding ASC
             LIMIT :limit
             """;
-
-    private static final RowMapper<TaskFinderDocument> LEXICAL_MAPPER = DatabaseTaskFinderRepository::mapLexicalRow;
-    private static final RowMapper<TaskFinderDocument> SEMANTIC_MAPPER = DatabaseTaskFinderRepository::mapSemanticRow;
 
     private final JdbcClient jdbcClient;
 
@@ -74,7 +70,7 @@ public class DatabaseTaskFinderRepository implements TaskFinderRepository {
         return jdbcClient.sql(LEXICAL_SQL)
                 .param("query", query)
                 .param("limit", limit)
-                .query(LEXICAL_MAPPER)
+                .query(TaskFinderDocument.class)
                 .list();
     }
 
@@ -86,32 +82,8 @@ public class DatabaseTaskFinderRepository implements TaskFinderRepository {
         return jdbcClient.sql(SEMANTIC_SQL)
                 .param("embedding", toVector(embedding))
                 .param("limit", limit)
-                .query(SEMANTIC_MAPPER)
+                .query(TaskFinderDocument.class)
                 .list();
-    }
-
-    private static TaskFinderDocument mapLexicalRow(ResultSet rs, int rowNum) throws SQLException {
-        return new TaskFinderDocument(
-                rs.getString("task_name"),
-                rs.getString("heading"),
-                rs.getString("url"),
-                rs.getString("anchor"),
-                rs.getString("content"),
-                rs.getDouble("lexical_score"),
-                0.0d
-        );
-    }
-
-    private static TaskFinderDocument mapSemanticRow(ResultSet rs, int rowNum) throws SQLException {
-        return new TaskFinderDocument(
-                rs.getString("task_name"),
-                rs.getString("heading"),
-                rs.getString("url"),
-                rs.getString("anchor"),
-                rs.getString("content"),
-                0.0d,
-                rs.getDouble("semantic_score")
-        );
     }
 
     private static PGobject toVector(double[] embedding) {
