@@ -2,15 +2,13 @@ package ch.so.agi.gretl.copilot.orchestration.agent;
 
 import org.postgresql.util.PGobject;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 /**
  * JDBC-backed implementation that queries the GRETL RAG schema.
@@ -62,10 +60,10 @@ public class DatabaseTaskFinderRepository implements TaskFinderRepository {
     private static final RowMapper<TaskFinderDocument> LEXICAL_MAPPER = DatabaseTaskFinderRepository::mapLexicalRow;
     private static final RowMapper<TaskFinderDocument> SEMANTIC_MAPPER = DatabaseTaskFinderRepository::mapSemanticRow;
 
-    private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final JdbcClient jdbcClient;
 
-    public DatabaseTaskFinderRepository(NamedParameterJdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public DatabaseTaskFinderRepository(JdbcClient jdbcClient) {
+        this.jdbcClient = jdbcClient;
     }
 
     @Override
@@ -73,11 +71,11 @@ public class DatabaseTaskFinderRepository implements TaskFinderRepository {
         if (query == null || query.isBlank()) {
             return Collections.emptyList();
         }
-        Map<String, Object> params = Map.of(
-                "query", query,
-                "limit", limit
-        );
-        return jdbcTemplate.query(LEXICAL_SQL, params, LEXICAL_MAPPER);
+        return jdbcClient.sql(LEXICAL_SQL)
+                .param("query", query)
+                .param("limit", limit)
+                .query(LEXICAL_MAPPER)
+                .list();
     }
 
     @Override
@@ -85,10 +83,11 @@ public class DatabaseTaskFinderRepository implements TaskFinderRepository {
         if (embedding == null || embedding.length == 0) {
             return Collections.emptyList();
         }
-        MapSqlParameterSource params = new MapSqlParameterSource();
-        params.addValue("embedding", toVector(embedding));
-        params.addValue("limit", limit);
-        return jdbcTemplate.query(SEMANTIC_SQL, params, SEMANTIC_MAPPER);
+        return jdbcClient.sql(SEMANTIC_SQL)
+                .param("embedding", toVector(embedding))
+                .param("limit", limit)
+                .query(SEMANTIC_MAPPER)
+                .list();
     }
 
     private static TaskFinderDocument mapLexicalRow(ResultSet rs, int rowNum) throws SQLException {

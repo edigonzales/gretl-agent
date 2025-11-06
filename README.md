@@ -109,22 +109,41 @@ Steuert den Gesamtfluss: baut den Klassifikationsprompt, ruft das Klassifikation
 
 ### Hybrid-Suche des TaskFinderAgent
 
-Der Finder-Agent nutzt die RAG-Datenbank (`rag.doc_chunks`) mit einer kombinierten Abfrage:
+Der Finder-Agent kombiniert zwei gezielte Abfragen auf der Tabelle `rag.doc_chunks`:
+
+**Lexikalische Suche**
 
 ```sql
 WITH query AS (
-    SELECT plainto_tsquery('simple', :query) AS tsq,
-           CAST(:embedding AS vector)       AS embedding
+    SELECT plainto_tsquery('simple', :query) AS tsq
 )
 SELECT
     dc.task_name,
-    ts_rank_cd(to_tsvector('simple', COALESCE(dc.heading, '') || ' ' || COALESCE(dc.content_text, '')), query.tsq) AS lexical_score,
-    1.0 / (1.0 + (dc.embedding <=> query.embedding))                                                               AS semantic_score
+    ts_rank_cd(
+        to_tsvector('simple', COALESCE(dc.heading, '') || ' ' || COALESCE(dc.content_text, '')),
+        query.tsq
+    ) AS lexical_score
 FROM rag.doc_chunks dc
 CROSS JOIN query
 WHERE dc.content_text IS NOT NULL
   AND query.tsq @@ to_tsvector('simple', COALESCE(dc.heading, '') || ' ' || COALESCE(dc.content_text, ''))
-ORDER BY lexical_score DESC, dc.embedding <=> query.embedding ASC
+ORDER BY lexical_score DESC
+LIMIT :limit;
+```
+
+**Semantische Suche**
+
+```sql
+WITH query AS (
+    SELECT CAST(:embedding AS vector) AS embedding
+)
+SELECT
+    dc.task_name,
+    1.0 / (1.0 + (dc.embedding <=> query.embedding)) AS semantic_score
+FROM rag.doc_chunks dc
+CROSS JOIN query
+WHERE dc.embedding IS NOT NULL
+ORDER BY dc.embedding <=> query.embedding ASC
 LIMIT :limit;
 ```
 
@@ -132,6 +151,8 @@ LIMIT :limit;
 * **Semantik:** Die pgvector-Distanz `(embedding <=> query.embedding)` verwandeln wir in eine Ähnlichkeitskennzahl (`1 / (1 + distance)`), um semantische Nähe zu berücksichtigen.
 * **Fusion:** Die Ergebnisse werden in Java normalisiert (max-basierte Skalierung) und mit 60 % Gewicht für BM25 sowie 40 % für die semantische Komponente zusammengeführt.
 * **Fallback:** Ist kein Embedding-Modell konfiguriert, arbeitet der Agent automatisch rein lexical.
+
+**Warum `rag.doc_chunks`?** Die Tabelle enthält bereits normalisierte Dokumentfragmente inklusive Überschriften, URLs, Anker und – entscheidend – denselben `content_text`, der als Volltextbasis dient, sowie die zugehörigen Embeddings. Andere Tabellen des Schemas sind stärker spezialisiert: `rag.pages` hält lediglich Metadaten zu den Ursprungsseiten ohne Embeddings, `rag.task_properties` und `rag.task_examples` modellieren Parameter beziehungsweise Beispielcode. Für eine konsistente Hybrid-Suche benötigen wir jedoch eine Quelle, die sowohl den Suchtext als auch den Vektorraum gemeinsam vorhält. Dadurch reicht ein Tabellenzugriff aus, um beide Signale zu ermitteln, und die Treffer lassen sich unmittelbar auf konkrete Dokumentabschnitte referenzieren.
 
 **Intent-Classifier?** Nicht nötig: Der bestehende Orchestrator klassifiziert jede Nutzeranfrage bereits in `FIND_TASK`, `EXPLAIN_TASK` oder `GENERATE_TASK`. Ein zusätzlicher Intent-Classifier im Finder würde nur Duplikatlogik einführen.
 
