@@ -15,26 +15,48 @@ import java.util.List;
 public class DatabaseTaskFinderRepository implements TaskFinderRepository {
 
     private static final String LEXICAL_SQL = """
-            WITH query AS (
-                SELECT plainto_tsquery('simple', :query) AS tsq
+            WITH params AS (
+              SELECT lower(:query) AS qtext
+            ),
+            q_terms AS (
+              -- deutsche Stopwörter werden von to_tsvector('german', ...) schon entfernt
+              SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('german', (SELECT qtext FROM params)))) AS term
+            ),
+            q_filtered AS (
+              SELECT term
+              FROM q_terms
+              WHERE length(term) >= 3
+            ),
+            q_or AS (
+              SELECT to_tsquery('german', string_agg(quote_ident(term) || ':*', ' | ')) AS tsq
+              FROM q_filtered
+            ),
+            q_must AS (
+              SELECT COALESCE(
+                       (SELECT tsq FROM q_or),
+                       websearch_to_tsquery('german', (SELECT qtext FROM params))
+                     ) AS tsq
             )
             SELECT
-                dc.task_name AS taskName,
-                COALESCE(dc.heading, '') AS heading,
-                COALESCE(dc.url, '') AS url,
-                COALESCE(dc.anchor, '') AS anchor,
-                COALESCE(dc.content_text, '') AS content,
-                ts_rank_cd(
-                    to_tsvector('simple', COALESCE(dc.heading, '') || ' ' || COALESCE(dc.content_text, '')),
-                    query.tsq
-                ) AS lexicalScore,
-                0.0::double precision AS semanticScore
+              dc.task_name AS taskName,
+              COALESCE(dc.heading, '') AS heading,
+              COALESCE(dc.url, '') AS url,
+              COALESCE(dc.anchor, '') AS anchor,
+              COALESCE(dc.content_text, '') AS content,
+            ts_rank_cd(
+              setweight(to_tsvector('german', COALESCE(dc.heading,'')), 'A') ||
+              setweight(to_tsvector('german', COALESCE(dc.content_text,'')), 'C'),
+              (SELECT tsq FROM q_must),
+              32 -- normalization flag
+            ) AS lexicalScore,
+              0.0::double precision AS semanticScore
             FROM rag.doc_chunks dc
-            CROSS JOIN query
-            WHERE dc.content_text IS NOT NULL
-              AND query.tsq @@ to_tsvector('simple', COALESCE(dc.heading, '') || ' ' || COALESCE(dc.content_text, ''))
+            WHERE (SELECT tsq FROM q_must) @@ (
+              to_tsvector('german', COALESCE(dc.heading,'')) ||
+              to_tsvector('german', COALESCE(dc.content_text,''))
+            )
             ORDER BY lexicalScore DESC
-            LIMIT :limit
+            LIMIT :limit;
             """;
 
     private static final String SEMANTIC_SQL = """
