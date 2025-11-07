@@ -46,8 +46,8 @@ public class LangChainConfiguration {
         return OpenAiEmbeddingModel.builder()
                 .apiKey(apiKey)
                 .modelName(modelName)
-                .logRequests(true)
-                .logResponses(true)
+//                .logRequests(true)
+//                .logResponses(true)
                 .build();
     }
 
@@ -102,8 +102,8 @@ public class LangChainConfiguration {
         return OpenAiChatModel.builder()
                 .apiKey(apiKey)
                 .modelName(modelName)
-                .logRequests(true)
-                .logResponses(true)
+//                .logRequests(true)
+//                .logResponses(true)
                 .build();
     }
 

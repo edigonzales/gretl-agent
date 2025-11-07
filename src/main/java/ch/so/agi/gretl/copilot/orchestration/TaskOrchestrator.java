@@ -45,6 +45,7 @@ public class TaskOrchestrator {
             throw new IllegalStateException("No agent registered for task type " + taskType);
         }
         String answer = agent.handle(userMessage);
+        log.info("answer: " + answer);
         return new TaskExecutionResult(taskType, answer);
     }
 
