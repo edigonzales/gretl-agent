@@ -6,7 +6,10 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.embedding.DisabledEmbeddingModel;
+import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -33,6 +36,19 @@ public class LangChainConfiguration {
             @Value("${openai.api-key}") String apiKey,
             @Value("${openai.finder-model:gpt-4o-mini}") String modelName) {
         return createOpenAiModel(apiKey, modelName);
+    }
+
+    @Bean("finderEmbeddingModel")
+    @ConditionalOnProperty(name = "openai.api-key")
+    public EmbeddingModel finderEmbeddingModel(
+            @Value("${openai.api-key}") String apiKey,
+            @Value("${openai.embedding-model:text-embedding-3-large}") String modelName) {
+        return OpenAiEmbeddingModel.builder()
+                .apiKey(apiKey)
+                .modelName(modelName)
+                .logRequests(true)
+                .logResponses(true)
+                .build();
     }
 
     @Bean("explanationModel")
@@ -62,6 +78,12 @@ public class LangChainConfiguration {
     @ConditionalOnMissingBean(name = "finderModel")
     public ChatModel finderFallbackModel() {
         return new PrefixedResponseChatModel("[Mock Finder]");
+    }
+
+    @Bean(name = "finderEmbeddingModel")
+    @ConditionalOnMissingBean(name = "finderEmbeddingModel")
+    public EmbeddingModel finderEmbeddingFallbackModel() {
+        return new DisabledEmbeddingModel();
     }
 
     @Bean(name = "explanationModel")
@@ -154,4 +176,5 @@ public class LangChainConfiguration {
             return lastMessage.toString();
         }
     }
+
 }
