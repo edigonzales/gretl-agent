@@ -161,18 +161,20 @@
     <h1>GRETL Copilot</h1>
     <div id="conversation"
          class="conversation"
+         data-polling="false"
          hx-get="/ui/chat/messages/poll"
-         hx-trigger="load, every 2s"
+         hx-trigger="poll, every 2s [this.dataset.polling === 'true']"
          hx-target="#conversation"
          hx-swap="beforeend"
-         hx-include="#clientId">
+         hx-include="#clientId"
+         hx-on::htmx:afterSwap="if (event.detail.requestConfig?.path?.includes('/ui/chat/messages/poll') && event.detail.xhr.responseText.trim() !== '') { this.dataset.polling = 'false'; }">
         <div class="empty-state" id="empty-state">Start a conversation to see responses from the GRETL copilot.</div>
     </div>
     <form class="composer"
           hx-post="/ui/chat/messages"
           hx-target="#conversation"
           hx-swap="beforeend"
-          hx-on::after-request="this.reset(); htmx.find('#message').focus();">
+          hx-on::after-request="this.reset(); htmx.find('#message').focus(); const conversation = htmx.find('#conversation'); conversation.dataset.polling = 'true'; htmx.trigger(conversation, 'poll');">
         <input type="hidden" name="clientId" id="clientId" value="${clientId}">
         <label for="message">Your request</label>
         <textarea id="message" name="message" placeholder="Ask for GRETL tasks, explanations, or new ideas." required></textarea>

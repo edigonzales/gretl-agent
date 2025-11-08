@@ -39,7 +39,10 @@ class ChatUiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
                 .andExpect(content().string(Matchers.containsString("hx-get=\"/ui/chat/messages/poll\"")))
-                .andExpect(content().string(Matchers.containsString("hx-trigger=\"load, every 2s\"")))
+                .andExpect(content().string(Matchers.containsString("data-polling=\"false\"")))
+                .andExpect(content().string(Matchers.containsString("hx-trigger=\"poll, every 2s [this.dataset.polling === 'true']\"")))
+                .andExpect(content().string(Matchers.containsString("hx-on::htmx:afterSwap=\"if (event.detail.requestConfig?.path?.includes('/ui/chat/messages/poll') && event.detail.xhr.responseText.trim() !== '') { this.dataset.polling = 'false'; }\"")))
+                .andExpect(content().string(Matchers.containsString("conversation.dataset.polling = 'true';")))
                 .andExpect(content().string(Matchers.containsString("https://unpkg.com/htmx.org@2.0.8")))
                 .andExpect(content().string(Matchers.not(Matchers.containsString("htmx-ext-sse"))));
     }
