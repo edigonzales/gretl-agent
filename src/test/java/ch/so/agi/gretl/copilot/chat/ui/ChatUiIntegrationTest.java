@@ -43,8 +43,10 @@ class ChatUiIntegrationTest {
                 .expectBody(String.class)
                 .value(html -> {
                     Assertions.assertThat(html).contains("hx-ext=\"sse\"");
+                    Assertions.assertThat(html).contains("sse-swap=\"beforeend\"");
                     Assertions.assertThat(html).contains("https://unpkg.com/htmx.org@2.0.8");
                     Assertions.assertThat(html).contains("https://cdn.jsdelivr.net/npm/htmx-ext-sse");
+                    Assertions.assertThat(html).contains("hx-on::after-request=\"this.reset(); htmx.find('#message').focus();\"");
                 });
     }
 

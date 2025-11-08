@@ -163,14 +163,15 @@
          class="conversation"
          hx-ext="sse"
          sse-connect="/ui/chat/stream/${clientId}"
-         sse-swap="message"
+         sse-swap="beforeend"
          sse-target="#conversation">
         <div class="empty-state" id="empty-state">Start a conversation to see responses from the GRETL copilot.</div>
     </div>
     <form class="composer"
           hx-post="/ui/chat/messages"
           hx-target="#conversation"
-          hx-swap="beforeend">
+          hx-swap="beforeend"
+          hx-on::after-request="this.reset(); htmx.find('#message').focus();">
         <input type="hidden" name="clientId" id="clientId" value="${clientId}">
         <label for="message">Your request</label>
         <textarea id="message" name="message" placeholder="Ask for GRETL tasks, explanations, or new ideas." required></textarea>

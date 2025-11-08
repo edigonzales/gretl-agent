@@ -47,7 +47,7 @@ public class ChatUiController {
 
     @GetMapping(path = "/stream/{clientId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @ResponseBody
-    public Flux<ServerSentEvent<String>> stream(@PathVariable String clientId) {
+    public Flux<ServerSentEvent<String>> stream(@PathVariable("clientId") String clientId) {
         Sinks.Many<String> sink = Sinks.many().replay().limit(1);
         Sinks.Many<String> previous = clientStreams.put(clientId, sink);
         if (previous != null) {
