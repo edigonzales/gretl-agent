@@ -6,8 +6,9 @@ Dieses Projekt stellt einen funktionsreichen Spring-Boot-Agenten für GRETL auf 
 
 ```mermaid
 sequenceDiagram
-    participant Browser as Browser (HTMX + SSE)
+    participant Browser as Browser (HTMX Polling)
     participant UiController as ChatUiController
+    participant Session as ChatSessionRegistry
     participant Service as ChatService
     participant Orchestrator as TaskOrchestrator
     participant Classifier as Klassifikations-LLM
@@ -36,7 +37,13 @@ sequenceDiagram
     end
     Orchestrator-->>Service: TaskExecutionResult
     Service-->>UiController: ChatResponse
-    UiController-->>Browser: SSE message { goal, answer }
+    UiController->>Session: enqueueResponse(clientId, Antwort)
+    loop Alle 2 Sekunden
+        Browser->>UiController: HTMX GET /ui/chat/messages/poll { clientId }
+        UiController->>Session: drainResponses(clientId)
+        Session-->>UiController: ausstehende Nachrichten
+        UiController-->>Browser: HTML-Snippet (Assistant/System)
+    end
 ```
 
 ## Klassenübersicht
@@ -44,7 +51,7 @@ sequenceDiagram
 ### Laufzeitstart & Konfiguration
 
 #### `ch.so.agi.gretl.copilot.GretlCopilotApplication`
-Spring-Boot-Einstiegspunkt, der den Application Context startet und damit REST-API, WebFlux-Stack und LangChain4j-Konfiguration verfügbar macht.
+Spring-Boot-Einstiegspunkt, der den Application Context startet und damit REST-API, den Spring-MVC-Stack und die LangChain4j-Konfiguration verfügbar macht.
 
 #### `ch.so.agi.gretl.copilot.config.LangChainConfiguration`
 Deklariert separate `ChatModel`-Beans für Klassifizierung, Finden, Erklären und Generieren.
@@ -57,7 +64,7 @@ Deklariert separate `ChatModel`-Beans für Klassifizierung, Finden, Erklären un
 REST-Controller für `POST /api/chat`. Validiert den Payload, delegiert an den Service und liefert strukturierte JSON-Antworten für externe Integrationen.
 
 #### `ch.so.agi.gretl.copilot.chat.ChatService`
-Zwischenschicht, die den Orchestrator kapselt. Die Methode `respond` führt den Aufruf synchron aus und wird bei Bedarf (z. B. für SSE) asynchron auf einen Worker-Thread verlagert.
+Zwischenschicht, die den Orchestrator kapselt. Die Methode `respond` läuft synchron, die UI startet sie bei Bedarf in einem Hintergrund-`CompletableFuture`, damit der Browser parallel weiterpollt.
 
 #### `ch.so.agi.gretl.copilot.chat.dto.ChatRequest`
 Input-DTO mit `@NotBlank`-Validierung, damit nur echte Chatnachrichten verarbeitet werden.
@@ -68,10 +75,13 @@ Output-DTO, das das gewählte Ziel (`TaskType`) und die generierte Antwort an Cl
 ### Web-UI & Streaming
 
 #### `ch.so.agi.gretl.copilot.chat.ui.ChatUiController`
-Rendern der JTE-Oberfläche (`GET /ui/chat`), Bereitstellen des SSE-Endpunkts und Bearbeiten der von HTMX ausgelösten Form-Posts. Rückgabe eines HTML-Snippets für die Benutzer-Nachricht und asynchrones Streamen der Assistenten-Antwort an den Browser.
+Rendern der JTE-Oberfläche (`GET /ui/chat`), Entgegennehmen der von HTMX ausgelösten Form-Posts und Bereitstellen eines Polling-Endpunkts. Der Post-Handler gibt sofort das Snippet der Benutzer-Nachricht zurück, während Antworten in einer Sitzung für die Polling-GETs vorgehalten werden.
+
+#### `ch.so.agi.gretl.copilot.chat.session.ChatSessionRegistry`
+Thread-sichere Ablage für ausstehende Antworten je `clientId`. Der Controller legt Assistant- oder Systemmeldungen dort ab, und die Polling-Requests holen sie paketweise ab.
 
 #### `ch.so.agi.gretl.copilot.chat.ui.ChatViewRenderer`
-Hilfsklasse zum Rendern einzelner Nachrichten via JTE. Sie stellt sicher, dass identische Templates für Initial-HTML, HTMX-Snippets und SSE-Nachrichten genutzt werden.
+Hilfsklasse zum Rendern einzelner Nachrichten via JTE. Sie stellt sicher, dass Initial-HTML, HTMX-Formantworten und Polling-Updates identisch aussehen.
 
 #### `ch.so.agi.gretl.copilot.chat.view.ChatMessageView`
 Value-Objekt für die Templates. Enthält Autor, Anzeigeüberschrift und CSS-Klasse und bietet Factory-Methoden für User-, Assistant- und Systemmeldungen.
@@ -158,7 +168,7 @@ LIMIT :limit;
 Das Projekt enthält mehrere Beispiel-Testklassen:
 * `TaskOrchestratorTest` prüft das Routing-Verhalten des Orchestrators mithilfe eines stub-basierten `ChatModel`.
 * `ChatControllerTest` stellt sicher, dass der REST-Endpunkt eine valide JSON-Antwort zurückliefert.
-* `ChatUiIntegrationTest` startet den Webserver inkl. HTMX/JTE-Oberfläche, prüft das ausgelieferte HTML und testet den kompletten Roundtrip (Form-Submit + SSE).
+* `ChatUiIntegrationTest` startet den Webserver inkl. HTMX/JTE-Oberfläche, prüft das ausgelieferte HTML und testet den kompletten Roundtrip (Form-Submit + Polling).
 
 Tests lassen sich mit dem Gradle Wrapper ausführen:
 
@@ -188,7 +198,7 @@ Tests lassen sich mit dem Gradle Wrapper ausführen:
 
 5. Web-Oberfläche:
    * Browser öffnen und `http://localhost:8080/ui/chat` aufrufen.
-   * Das Formular verwendet [HTMX 2.0.8](https://htmx.org) und Server-Sent-Events, um Antworten ohne JavaScript-Framework live einzublenden.
+   * Das Formular verwendet [HTMX 2.0.8](https://htmx.org) mit einfachem Polling, um Antworten ohne JavaScript-Framework live einzublenden.
    * Ohne OpenAI-Key greifen die Mock-Modelle und liefern Dummy-Antworten, sodass die UI auch offline nutzbar bleibt. Fehlt der Umgebungswert, bleibt die Property leer und es ist keine zusätzliche Konfiguration nötig.
 
 ## Weiteres Vorgehen

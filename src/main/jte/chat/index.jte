@@ -161,10 +161,11 @@
     <h1>GRETL Copilot</h1>
     <div id="conversation"
          class="conversation"
-         hx-ext="sse"
-         sse-connect="/ui/chat/stream/${clientId}"
-         sse-swap="beforeend"
-         sse-target="#conversation">
+         hx-get="/ui/chat/messages/poll"
+         hx-trigger="load, every 2s"
+         hx-target="#conversation"
+         hx-swap="beforeend"
+         hx-include="#clientId">
         <div class="empty-state" id="empty-state">Start a conversation to see responses from the GRETL copilot.</div>
     </div>
     <form class="composer"
@@ -179,6 +180,5 @@
     </form>
 </main>
 <script src="https://unpkg.com/htmx.org@2.0.8"></script>
-<script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4/sse.min.js"></script>
 </body>
 </html>
