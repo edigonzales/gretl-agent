@@ -178,5 +178,6 @@
     </form>
 </main>
 <script src="https://unpkg.com/htmx.org@2.0.8"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4/sse.min.js"></script>
 </body>
 </html>

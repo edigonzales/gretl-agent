@@ -1,6 +1,5 @@
 package ch.so.agi.gretl.copilot.chat.ui;
 
-import ch.so.agi.gretl.copilot.chat.stream.ChatStreamPublisher;
 import ch.so.agi.gretl.copilot.orchestration.TaskExecutionResult;
 import ch.so.agi.gretl.copilot.orchestration.TaskOrchestrator;
 import ch.so.agi.gretl.copilot.orchestration.TaskType;
@@ -11,14 +10,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.mock.mockito.SpyBean;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.test.web.reactive.server.WebTestClient;
-import org.springframework.web.reactive.function.BodyInserters;
 
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import reactor.core.Disposable;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
@@ -27,8 +27,8 @@ class ChatUiIntegrationTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @SpyBean
-    private ChatStreamPublisher chatStreamPublisher;
+    @Autowired
+    private ChatUiController chatUiController;
 
     @MockBean
     private TaskOrchestrator taskOrchestrator;
@@ -44,6 +44,7 @@ class ChatUiIntegrationTest {
                 .value(html -> {
                     Assertions.assertThat(html).contains("hx-ext=\"sse\"");
                     Assertions.assertThat(html).contains("https://unpkg.com/htmx.org@2.0.8");
+                    Assertions.assertThat(html).contains("https://cdn.jsdelivr.net/npm/htmx-ext-sse");
                 });
     }
 
@@ -54,19 +55,29 @@ class ChatUiIntegrationTest {
 
         String clientId = UUID.randomUUID().toString();
 
-        String html = webTestClient.post()
-                .uri("/ui/chat/messages")
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(BodyInserters.fromFormData("message", "find a task").with("clientId", clientId))
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody(String.class)
-                .returnResult()
-                .getResponseBody();
+        var receivedMessages = chatUiController.stream(clientId)
+                .map(ServerSentEvent::data)
+                .filter(payload -> payload != null && !payload.isBlank());
 
-        Assertions.assertThat(html).contains("find a task");
+        BlockingQueue<String> queue = new LinkedBlockingQueue<>();
+        Disposable subscription = receivedMessages.subscribe(queue::offer);
+        try {
+            String html = chatUiController.postMessage("find a task", clientId).block();
+            Assertions.assertThat(html).isNotNull();
+            Assertions.assertThat(html).contains("find a task");
 
-        Mockito.verify(chatStreamPublisher, Mockito.timeout(2000))
-                .publish(Mockito.eq(clientId), Mockito.argThat(payload -> payload.contains("Mock response")));
+            String payload;
+            try {
+                payload = queue.poll(5, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while waiting for SSE payload", ex);
+            }
+
+            Assertions.assertThat(payload).isNotNull();
+            Assertions.assertThat(payload).contains("Mock response");
+        } finally {
+            subscription.dispose();
+        }
     }
 }
