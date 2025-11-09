@@ -6,8 +6,9 @@ Dieses Projekt stellt einen funktionsreichen Spring-Boot-Agenten für GRETL auf 
 
 ```mermaid
 sequenceDiagram
-    participant User as Endnutzer
-    participant Controller as ChatController
+    participant Browser as Browser (HTMX Polling)
+    participant UiController as ChatUiController
+    participant Session as ChatSessionRegistry
     participant Service as ChatService
     participant Orchestrator as TaskOrchestrator
     participant Classifier as Klassifikations-LLM
@@ -16,8 +17,9 @@ sequenceDiagram
     participant Generator as TaskGeneratorAgent
     participant RagStore as RAG-Datenbank
 
-    User->>Controller: HTTP POST /api/chat { message }
-    Controller->>Service: respond(request)
+    Browser->>UiController: HTMX POST /ui/chat/messages { message, clientId }
+    UiController-->>Browser: HTML-Snippet (User-Nachricht)
+    UiController->>Service: respond(request) (async)
     Service->>Orchestrator: orchestrate(message)
     Orchestrator->>Classifier: generate(classification prompt)
     Classifier-->>Orchestrator: goal (FIND/EXPLAIN/GENERATE)
@@ -34,8 +36,14 @@ sequenceDiagram
         Generator-->>Orchestrator: Antwort Generator-Agent
     end
     Orchestrator-->>Service: TaskExecutionResult
-    Service-->>Controller: ChatResponse
-    Controller-->>User: JSON { goal, answer }
+    Service-->>UiController: ChatResponse
+    UiController->>Session: enqueueResponse(clientId, Antwort)
+    loop Alle 2 Sekunden
+        Browser->>UiController: HTMX GET /ui/chat/messages/poll { clientId }
+        UiController->>Session: drainResponses(clientId)
+        Session-->>UiController: ausstehende Nachrichten
+        UiController-->>Browser: HTML-Snippet (Assistant/System)
+    end
 ```
 
 ## Klassenübersicht
@@ -43,7 +51,7 @@ sequenceDiagram
 ### Laufzeitstart & Konfiguration
 
 #### `ch.so.agi.gretl.copilot.GretlCopilotApplication`
-Spring-Boot-Einstiegspunkt, der den Application Context startet und damit REST-API, WebFlux-Stack und LangChain4j-Konfiguration verfügbar macht.
+Spring-Boot-Einstiegspunkt, der den Application Context startet und damit REST-API, den Spring-MVC-Stack und die LangChain4j-Konfiguration verfügbar macht.
 
 #### `ch.so.agi.gretl.copilot.config.LangChainConfiguration`
 Deklariert separate `ChatModel`-Beans für Klassifizierung, Finden, Erklären und Generieren.
@@ -56,7 +64,7 @@ Deklariert separate `ChatModel`-Beans für Klassifizierung, Finden, Erklären un
 REST-Controller für `POST /api/chat`. Validiert den Payload, delegiert an den Service und liefert strukturierte JSON-Antworten für externe Integrationen.
 
 #### `ch.so.agi.gretl.copilot.chat.ChatService`
-Zwischenschicht, die den Orchestrator kapselt. Neben der synchronen Methode `respond` stellt `respondReactive` ein reaktives `Mono` bereit, auf dem sowohl REST als auch SSE-UI aufbauen.
+Zwischenschicht, die den Orchestrator kapselt. Die Methode `respond` läuft synchron, die UI startet sie bei Bedarf in einem Hintergrund-`CompletableFuture`, damit der Browser parallel weiterpollt.
 
 #### `ch.so.agi.gretl.copilot.chat.dto.ChatRequest`
 Input-DTO mit `@NotBlank`-Validierung, damit nur echte Chatnachrichten verarbeitet werden.
@@ -67,16 +75,13 @@ Output-DTO, das das gewählte Ziel (`TaskType`) und die generierte Antwort an Cl
 ### Web-UI & Streaming
 
 #### `ch.so.agi.gretl.copilot.chat.ui.ChatUiController`
-Rendern der JTE-Oberfläche (`GET /ui/chat`) und Bearbeiten der von HTMX ausgelösten Form-Posts. Rückgabe eines HTML-Snippets für die Benutzer-Nachricht und Start der reaktiven Antwortverarbeitung pro Client.
+Rendern der JTE-Oberfläche (`GET /ui/chat`), Entgegennehmen der von HTMX ausgelösten Form-Posts und Bereitstellen eines Polling-Endpunkts. Der Post-Handler gibt sofort das Snippet der Benutzer-Nachricht zurück, während Antworten in einer Sitzung für die Polling-GETs vorgehalten werden.
 
-#### `ch.so.agi.gretl.copilot.chat.ui.ChatStreamController`
-SSE-Endpunkt `GET /ui/chat/stream/{clientId}`. Stellt pro Browser-Verbindung einen Flux bereit, der Bot-Antworten live in die Oberfläche streamt.
+#### `ch.so.agi.gretl.copilot.chat.session.ChatSessionRegistry`
+Thread-sichere Ablage für ausstehende Antworten je `clientId`. Der Controller legt Assistant- oder Systemmeldungen dort ab, und die Polling-Requests holen sie paketweise ab.
 
 #### `ch.so.agi.gretl.copilot.chat.ui.ChatViewRenderer`
-Hilfsklasse zum Rendern einzelner Nachrichten via JTE. Sie stellt sicher, dass identische Templates für Initial-HTML, HTMX-Snippets und SSE-Nachrichten genutzt werden.
-
-#### `ch.so.agi.gretl.copilot.chat.stream.ChatStreamPublisher`
-Verwaltet reaktive `Sinks.Many` je Client-ID. Controller registrieren/abmelden Streams, während Service und UI neue Nachrichten als HTML-Strings publizieren.
+Hilfsklasse zum Rendern einzelner Nachrichten via JTE. Sie stellt sicher, dass Initial-HTML, HTMX-Formantworten und Polling-Updates identisch aussehen.
 
 #### `ch.so.agi.gretl.copilot.chat.view.ChatMessageView`
 Value-Objekt für die Templates. Enthält Autor, Anzeigeüberschrift und CSS-Klasse und bietet Factory-Methoden für User-, Assistant- und Systemmeldungen.
@@ -93,7 +98,7 @@ Enum für die Ziele `FIND_TASK`, `EXPLAIN_TASK`, `GENERATE_TASK`. Die Methode `f
 Funktionales Interface, das den Vertrag der Sub-Agenten definiert (`handle(String userMessage)` → Antworttext).
 
 #### `ch.so.agi.gretl.copilot.orchestration.agent.TaskFinderAgent`
-Führt eine hybride Suche in der RAG-Datenbank durch: BM25-/TSVektor-Abfragen liefern präzise Texttreffer, pgvector-Suche ergänzt semantisch ähnliche Chunks. Die Ergebnisse werden normalisiert, gewichtet (60 % BM25, 40 % Semantik) und als kompakte Trefferliste für die Benutzer:innen formatiert.
+Führt eine hybride Suche in der RAG-Datenbank durch: BM25-/TSVektor-Abfragen liefern präzise Texttreffer, pgvector-Suche ergänzt semantisch ähnliche Chunks. Die Ergebnisse werden normalisiert, gewichtet (30 % BM25, 70 % Semantik) und als kompakte Trefferliste für die Benutzer:innen formatiert.
 
 #### `ch.so.agi.gretl.copilot.orchestration.agent.TaskExplanationAgent`
 Mock für die Fähigkeit "Task erklären" mit vorbereiteter Injektion des `explanationModel`.
@@ -149,7 +154,7 @@ LIMIT :limit;
 
 * **BM25/TSVektor:** `ts_rank_cd` approximiert BM25 und liefert robuste Volltexttreffer.
 * **Semantik:** Die pgvector-Distanz `(embedding <=> query.embedding)` verwandeln wir in eine Ähnlichkeitskennzahl (`1 / (1 + distance)`), um semantische Nähe zu berücksichtigen.
-* **Fusion:** Die Ergebnisse werden in Java normalisiert (max-basierte Skalierung) und mit 60 % Gewicht für BM25 sowie 40 % für die semantische Komponente zusammengeführt.
+* **Fusion:** Die Ergebnisse werden in Java normalisiert (max-basierte Skalierung) und mit 30 % Gewicht für BM25 sowie 70 % für die semantische Komponente zusammengeführt.
 * **Fallback:** Ist kein Embedding-Modell konfiguriert, arbeitet der Agent automatisch rein lexical.
 
 **Warum `rag.doc_chunks`?** Die Tabelle enthält bereits normalisierte Dokumentfragmente inklusive Überschriften, URLs, Anker und – entscheidend – denselben `content_text`, der als Volltextbasis dient, sowie die zugehörigen Embeddings. Andere Tabellen des Schemas sind stärker spezialisiert: `rag.pages` hält lediglich Metadaten zu den Ursprungsseiten ohne Embeddings, `rag.task_properties` und `rag.task_examples` modellieren Parameter beziehungsweise Beispielcode. Für eine konsistente Hybrid-Suche benötigen wir jedoch eine Quelle, die sowohl den Suchtext als auch den Vektorraum gemeinsam vorhält. Dadurch reicht ein Tabellenzugriff aus, um beide Signale zu ermitteln, und die Treffer lassen sich unmittelbar auf konkrete Dokumentabschnitte referenzieren.
@@ -163,8 +168,7 @@ LIMIT :limit;
 Das Projekt enthält mehrere Beispiel-Testklassen:
 * `TaskOrchestratorTest` prüft das Routing-Verhalten des Orchestrators mithilfe eines stub-basierten `ChatModel`.
 * `ChatControllerTest` stellt sicher, dass der REST-Endpunkt eine valide JSON-Antwort zurückliefert.
-* `ChatStreamPublisherTest` verifiziert, dass registrierte SSE-Streams Payloads zuverlässig erhalten.
-* `ChatUiIntegrationTest` startet den Webserver inkl. HTMX/JTE-Oberfläche, prüft das ausgelieferte HTML und testet den kompletten Roundtrip (Form-Submit + SSE).
+* `ChatUiIntegrationTest` startet den Webserver inkl. HTMX/JTE-Oberfläche, prüft das ausgelieferte HTML und testet den kompletten Roundtrip (Form-Submit + Polling).
 
 Tests lassen sich mit dem Gradle Wrapper ausführen:
 
@@ -194,7 +198,7 @@ Tests lassen sich mit dem Gradle Wrapper ausführen:
 
 5. Web-Oberfläche:
    * Browser öffnen und `http://localhost:8080/ui/chat` aufrufen.
-   * Das Formular verwendet [HTMX 2.0.8](https://htmx.org) und Server-Sent-Events, um Antworten ohne JavaScript-Framework live einzublenden.
+   * Das Formular verwendet [HTMX 2.0.8](https://htmx.org) mit einfachem Polling, um Antworten ohne JavaScript-Framework live einzublenden.
    * Ohne OpenAI-Key greifen die Mock-Modelle und liefern Dummy-Antworten, sodass die UI auch offline nutzbar bleibt. Fehlt der Umgebungswert, bleibt die Property leer und es ist keine zusätzliche Konfiguration nötig.
 
 ## Weiteres Vorgehen

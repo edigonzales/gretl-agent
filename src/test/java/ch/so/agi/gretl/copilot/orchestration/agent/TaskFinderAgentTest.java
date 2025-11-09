@@ -39,7 +39,7 @@ class TaskFinderAgentTest {
 
         assertThat(answer).contains("task-b");
         assertThat(answer.indexOf("task-b")).isLessThan(answer.indexOf("task-a"));
-        assertThat(answer).contains("Gewichtung: BM25 60% / Semantik 40%");
+        assertThat(answer).contains("Gewichtung: BM25 30% / Semantik 70%");
         assertThat(repository.semanticInvocations).isEqualTo(1);
         assertThat(repository.lastEmbedding).isNotEmpty();
     }
