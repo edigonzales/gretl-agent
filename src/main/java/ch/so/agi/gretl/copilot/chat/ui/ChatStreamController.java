@@ -19,7 +19,7 @@ public class ChatStreamController {
     }
 
     @GetMapping(path = "/stream/{clientId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@PathVariable String clientId) {
+    public SseEmitter stream(@PathVariable("clientId") String clientId) {
         return streamPublisher.openStream(clientId);
     }
 }
