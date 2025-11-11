@@ -43,7 +43,7 @@ sequenceDiagram
 ### Laufzeitstart & Konfiguration
 
 #### `ch.so.agi.gretl.copilot.GretlCopilotApplication`
-Spring-Boot-Einstiegspunkt, der den Application Context startet und damit REST-API, WebFlux-Stack und LangChain4j-Konfiguration verfügbar macht.
+Spring-Boot-Einstiegspunkt, der den Application Context startet und damit REST-API und LangChain4j-Konfiguration verfügbar macht.
 
 #### `ch.so.agi.gretl.copilot.config.LangChainConfiguration`
 Deklariert separate `ChatModel`-Beans für Klassifizierung, Finden, Erklären und Generieren.
@@ -56,7 +56,7 @@ Deklariert separate `ChatModel`-Beans für Klassifizierung, Finden, Erklären un
 REST-Controller für `POST /api/chat`. Validiert den Payload, delegiert an den Service und liefert strukturierte JSON-Antworten für externe Integrationen.
 
 #### `ch.so.agi.gretl.copilot.chat.ChatService`
-Zwischenschicht, die den Orchestrator kapselt. Neben der synchronen Methode `respond` stellt `respondReactive` ein reaktives `Mono` bereit, auf dem sowohl REST als auch SSE-UI aufbauen.
+Zwischenschicht, die den Orchestrator kapselt und synchron über `respond` Antworten liefert.
 
 #### `ch.so.agi.gretl.copilot.chat.dto.ChatRequest`
 Input-DTO mit `@NotBlank`-Validierung, damit nur echte Chatnachrichten verarbeitet werden.
@@ -67,16 +67,16 @@ Output-DTO, das das gewählte Ziel (`TaskType`) und die generierte Antwort an Cl
 ### Web-UI & Streaming
 
 #### `ch.so.agi.gretl.copilot.chat.ui.ChatUiController`
-Rendern der JTE-Oberfläche (`GET /ui/chat`) und Bearbeiten der von HTMX ausgelösten Form-Posts. Rückgabe eines HTML-Snippets für die Benutzer-Nachricht und Start der reaktiven Antwortverarbeitung pro Client.
+Rendern der JTE-Oberfläche (`GET /ui/chat`) und Bearbeiten der von HTMX ausgelösten Form-Posts. Rückgabe eines HTML-Snippets für die Benutzer-Nachricht und Start einer asynchronen Verarbeitung pro Client, die das Ergebnis per SSE ausliefert.
 
 #### `ch.so.agi.gretl.copilot.chat.ui.ChatStreamController`
-SSE-Endpunkt `GET /ui/chat/stream/{clientId}`. Stellt pro Browser-Verbindung einen Flux bereit, der Bot-Antworten live in die Oberfläche streamt.
+SSE-Endpunkt `GET /ui/chat/stream/{clientId}`. Stellt pro Browser-Verbindung einen `SseEmitter` bereit, der Bot-Antworten live in die Oberfläche streamt.
 
 #### `ch.so.agi.gretl.copilot.chat.ui.ChatViewRenderer`
 Hilfsklasse zum Rendern einzelner Nachrichten via JTE. Sie stellt sicher, dass identische Templates für Initial-HTML, HTMX-Snippets und SSE-Nachrichten genutzt werden.
 
 #### `ch.so.agi.gretl.copilot.chat.stream.ChatStreamPublisher`
-Verwaltet reaktive `Sinks.Many` je Client-ID. Controller registrieren/abmelden Streams, während Service und UI neue Nachrichten als HTML-Strings publizieren.
+Verwaltet `SseEmitter` je Client-ID. Controller registrieren/abmelden Streams, während Service und UI neue Nachrichten als HTML-Strings publizieren.
 
 #### `ch.so.agi.gretl.copilot.chat.view.ChatMessageView`
 Value-Objekt für die Templates. Enthält Autor, Anzeigeüberschrift und CSS-Klasse und bietet Factory-Methoden für User-, Assistant- und Systemmeldungen.

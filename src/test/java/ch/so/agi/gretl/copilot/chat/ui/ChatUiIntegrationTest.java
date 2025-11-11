@@ -8,24 +8,22 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
-import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.test.web.reactive.server.WebTestClient;
-import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.UUID;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureWebTestClient
+@AutoConfigureMockMvc
 class ChatUiIntegrationTest {
 
     @Autowired
-    private WebTestClient webTestClient;
+    private MockMvc mockMvc;
 
     @SpyBean
     private ChatStreamPublisher chatStreamPublisher;
@@ -34,35 +32,34 @@ class ChatUiIntegrationTest {
     private TaskOrchestrator taskOrchestrator;
 
     @Test
-    void servesChatPage() {
-        webTestClient.get()
-                .uri("/ui/chat")
-                .exchange()
-                .expectStatus().isOk()
-                .expectHeader().contentTypeCompatibleWith(MediaType.TEXT_HTML)
-                .expectBody(String.class)
-                .value(html -> {
-                    Assertions.assertThat(html).contains("hx-ext=\"sse\"");
-                    Assertions.assertThat(html).contains("https://unpkg.com/htmx.org@2.0.8");
-                });
+    void servesChatPage() throws Exception {
+        MvcResult result = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/ui/chat"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                .andReturn();
+
+        String html = result.getResponse().getContentAsString();
+        Assertions.assertThat(html).contains("hx-ext=\"sse\"");
+        Assertions.assertThat(html).contains("https://unpkg.com/htmx.org@2.0.8");
+        Assertions.assertThat(html).contains("https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4/sse.min.js");
     }
 
     @Test
-    void streamsAssistantReplyOverSse() {
+    void streamsAssistantReplyOverSse() throws Exception {
         Mockito.when(taskOrchestrator.orchestrate(Mockito.anyString()))
                 .thenReturn(new TaskExecutionResult(TaskType.FIND_TASK, "Mock response"));
 
         String clientId = UUID.randomUUID().toString();
 
-        String html = webTestClient.post()
-                .uri("/ui/chat/messages")
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(BodyInserters.fromFormData("message", "find a task").with("clientId", clientId))
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody(String.class)
-                .returnResult()
-                .getResponseBody();
+        MvcResult result = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/ui/chat/messages")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("message", "find a task")
+                        .param("clientId", clientId))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                .andReturn();
+
+        String html = result.getResponse().getContentAsString();
 
         Assertions.assertThat(html).contains("find a task");
 
