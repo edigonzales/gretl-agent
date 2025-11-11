@@ -162,6 +162,7 @@
     <div id="conversation"
          class="conversation"
          hx-ext="sse"
+         hx-swap="beforeend"
          sse-connect="/ui/chat/stream/${clientId}"
          sse-swap="message"
          sse-target="#conversation">
@@ -170,7 +171,8 @@
     <form class="composer"
           hx-post="/ui/chat/messages"
           hx-target="#conversation"
-          hx-swap="beforeend">
+          hx-swap="beforeend"
+          hx-on::after-request="if(event.detail.successful){const input=document.getElementById('message');if(input){input.value='';input.focus();}}">
         <input type="hidden" name="clientId" id="clientId" value="${clientId}">
         <label for="message">Your request</label>
         <textarea id="message" name="message" placeholder="Ask for GRETL tasks, explanations, or new ideas." required></textarea>
@@ -178,5 +180,6 @@
     </form>
 </main>
 <script src="https://unpkg.com/htmx.org@2.0.8"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4/sse.min.js"></script>
 </body>
 </html>

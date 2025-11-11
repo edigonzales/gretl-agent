@@ -2,12 +2,11 @@ package ch.so.agi.gretl.copilot.chat.ui;
 
 import ch.so.agi.gretl.copilot.chat.stream.ChatStreamPublisher;
 import org.springframework.http.MediaType;
-import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Flux;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/ui/chat")
@@ -20,7 +19,7 @@ public class ChatStreamController {
     }
 
     @GetMapping(path = "/stream/{clientId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> stream(@PathVariable String clientId) {
-        return streamPublisher.stream(clientId);
+    public SseEmitter stream(@PathVariable("clientId") String clientId) {
+        return streamPublisher.openStream(clientId);
     }
 }
