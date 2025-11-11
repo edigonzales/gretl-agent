@@ -1,6 +1,7 @@
 package ch.so.agi.gretl.copilot.orchestration.agent;
 
 import ch.so.agi.gretl.copilot.orchestration.TaskAgent;
+import ch.so.agi.gretl.copilot.orchestration.render.MarkdownRenderer;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -39,11 +40,14 @@ public class TaskFinderAgent implements TaskAgent {
 
     private final TaskFinderRepository repository;
     private final ObjectProvider<EmbeddingModel> embeddingModelProvider;
+    private final MarkdownRenderer markdownRenderer;
 
     public TaskFinderAgent(TaskFinderRepository repository,
-                           @Qualifier("finderEmbeddingModel") ObjectProvider<EmbeddingModel> embeddingModelProvider) {
+                           @Qualifier("finderEmbeddingModel") ObjectProvider<EmbeddingModel> embeddingModelProvider,
+                           MarkdownRenderer markdownRenderer) {
         this.repository = repository;
         this.embeddingModelProvider = embeddingModelProvider;
+        this.markdownRenderer = markdownRenderer;
     }
 
     /**
@@ -55,7 +59,7 @@ public class TaskFinderAgent implements TaskAgent {
     @Override
     public String handle(String userMessage) {
         if (userMessage == null || userMessage.isBlank()) {
-            return "Bitte beschreibe dein GRETL-Problem etwas genauer, damit ich passende Tasks suchen kann.";
+            return markdownRenderer.render("Bitte beschreibe dein GRETL-Problem etwas genauer, damit ich passende Tasks suchen kann.");
         }
 
         List<TaskFinderDocument> lexicalMatches = repository.searchLexical(userMessage, CANDIDATE_LIMIT);
@@ -71,10 +75,10 @@ public class TaskFinderAgent implements TaskAgent {
         }
         
         if (ranked.isEmpty()) {
-            return "Ich konnte in der GRETL-Dokumentation keine passenden Tasks zu deiner Anfrage finden.";
+            return markdownRenderer.render("Ich konnte in der GRETL-Dokumentation keine passenden Tasks zu deiner Anfrage finden.");
         }
         boolean semanticUsed = queryEmbedding.isPresent() && !semanticMatches.isEmpty();
-        return formatResponse(userMessage, ranked, semanticUsed);
+        return markdownRenderer.render(formatResponse(userMessage, ranked, semanticUsed));
     }
 
     private List<RankedDocument> rank(List<TaskFinderDocument> lexicalMatches, List<TaskFinderDocument> semanticMatches) {

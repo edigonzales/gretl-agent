@@ -1,5 +1,6 @@
 package ch.so.agi.gretl.copilot.orchestration.agent;
 
+import ch.so.agi.gretl.copilot.orchestration.render.MarkdownRenderer;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.output.Response;
@@ -33,12 +34,12 @@ class TaskFinderAgentTest {
 
         ObjectProvider<EmbeddingModel> provider = providerReturning(mockEmbeddingModel());
 
-        TaskFinderAgent agent = new TaskFinderAgent(repository, provider);
+        TaskFinderAgent agent = new TaskFinderAgent(repository, provider, new MarkdownRenderer());
 
         String answer = agent.handle("Wie importiere ich INTERLIS-Daten?");
 
-        assertThat(answer).contains("task-b");
-        assertThat(answer.indexOf("task-b")).isLessThan(answer.indexOf("task-a"));
+        assertThat(answer).contains("<strong>task-b – Heading B</strong>");
+        assertThat(answer.indexOf("task-b – Heading B")).isLessThan(answer.indexOf("task-a – Heading A"));
         assertThat(answer).contains("Gewichtung: BM25 60% / Semantik 40%");
         assertThat(repository.semanticInvocations).isEqualTo(1);
         assertThat(repository.lastEmbedding).isNotEmpty();
@@ -53,7 +54,7 @@ class TaskFinderAgentTest {
         );
 
         ObjectProvider<EmbeddingModel> provider = providerReturning(null);
-        TaskFinderAgent agent = new TaskFinderAgent(repository, provider);
+        TaskFinderAgent agent = new TaskFinderAgent(repository, provider, new MarkdownRenderer());
 
         String answer = agent.handle("Wie importiere ich INTERLIS-Daten?");
 
@@ -66,7 +67,7 @@ class TaskFinderAgentTest {
     void returnsHelpfulMessageWhenNoMatchesAreFound() {
         StubRepository repository = new StubRepository();
         ObjectProvider<EmbeddingModel> provider = providerReturning(null);
-        TaskFinderAgent agent = new TaskFinderAgent(repository, provider);
+        TaskFinderAgent agent = new TaskFinderAgent(repository, provider, new MarkdownRenderer());
 
         String answer = agent.handle("Unbekannter Task");
 
