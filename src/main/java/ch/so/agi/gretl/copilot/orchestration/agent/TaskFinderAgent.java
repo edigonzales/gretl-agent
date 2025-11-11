@@ -35,8 +35,8 @@ public class TaskFinderAgent implements TaskAgent {
 
     private static final int CANDIDATE_LIMIT = 12;
     private static final int RESULT_LIMIT = 5;
-    private static final double LEXICAL_WEIGHT = 0.6d;
-    private static final double SEMANTIC_WEIGHT = 0.4d;
+    private static final double LEXICAL_WEIGHT = 0.3d;
+    private static final double SEMANTIC_WEIGHT = 0.7d;
 
     private final TaskFinderRepository repository;
     private final ObjectProvider<EmbeddingModel> embeddingModelProvider;
