@@ -5,6 +5,7 @@ import ch.so.agi.gretl.copilot.orchestration.agent.TaskFinderAgent;
 import ch.so.agi.gretl.copilot.orchestration.agent.TaskFinderDocument;
 import ch.so.agi.gretl.copilot.orchestration.agent.TaskFinderRepository;
 import ch.so.agi.gretl.copilot.orchestration.agent.TaskGeneratorAgent;
+import ch.so.agi.gretl.copilot.orchestration.render.MarkdownRenderer;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -31,7 +32,7 @@ class TaskOrchestratorTest {
         TaskFinderRepository repository = new StubFinderRepository();
         ObjectProvider<EmbeddingModel> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(null);
-        TaskFinderAgent finderAgent = new TaskFinderAgent(repository, provider);
+        TaskFinderAgent finderAgent = new TaskFinderAgent(repository, provider, new MarkdownRenderer());
         orchestrator = new TaskOrchestrator(model, finderAgent, new TaskExplanationAgent(), new TaskGeneratorAgent());
     }
 

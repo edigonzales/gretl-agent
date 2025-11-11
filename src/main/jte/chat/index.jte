@@ -67,7 +67,7 @@
         }
 
         .message-body {
-            white-space: pre-wrap;
+            white-space: normal;
         }
 
         .message-user {

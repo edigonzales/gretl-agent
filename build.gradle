@@ -24,6 +24,7 @@ dependencies {
     implementation 'dev.langchain4j:langchain4j:1.8.0'
     implementation 'dev.langchain4j:langchain4j-open-ai:1.8.0'
     implementation 'gg.jte:jte-spring-boot-starter-3:3.2.1'
+    implementation 'com.vladsch.flexmark:flexmark-all:0.64.8'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 
