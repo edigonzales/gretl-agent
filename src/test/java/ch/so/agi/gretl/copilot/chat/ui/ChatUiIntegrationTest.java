@@ -6,6 +6,7 @@ import ch.so.agi.gretl.copilot.orchestration.TaskOrchestrator;
 import ch.so.agi.gretl.copilot.orchestration.TaskType;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -47,13 +48,13 @@ class ChatUiIntegrationTest {
     @Test
     void streamsAssistantReplyOverSse() throws Exception {
         Mockito.when(taskOrchestrator.orchestrate(Mockito.anyString()))
-                .thenReturn(new TaskExecutionResult(TaskType.FIND_TASK, "Mock response"));
+                .thenReturn(new TaskExecutionResult(TaskType.FIND_TASK, "<p><strong>Mock</strong> response</p>"));
 
         String clientId = UUID.randomUUID().toString();
 
         MvcResult result = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/ui/chat/messages")
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                        .param("message", "find a task")
+                        .param("message", "<script>alert('xss')</script>")
                         .param("clientId", clientId))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
@@ -61,9 +62,13 @@ class ChatUiIntegrationTest {
 
         String html = result.getResponse().getContentAsString();
 
-        Assertions.assertThat(html).contains("find a task");
+        Assertions.assertThat(html).contains("&lt;script&gt;alert('xss')&lt;/script&gt;");
 
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
         Mockito.verify(chatStreamPublisher, Mockito.timeout(2000))
-                .publish(Mockito.eq(clientId), Mockito.argThat(payload -> payload.contains("Mock response")));
+                .publish(Mockito.eq(clientId), payloadCaptor.capture());
+        String payload = payloadCaptor.getValue();
+        Assertions.assertThat(payload).contains("<p><strong>Mock</strong> response</p>");
+        Assertions.assertThat(payload).doesNotContain("&lt;p><strong>Mock</strong> response&lt;/p>");
     }
 }
